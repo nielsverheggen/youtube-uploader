@@ -376,6 +376,11 @@ async function uploadVideo(videoJSON: Video, messageTransport: MessageTransport)
         } catch (err) {}
         messageTransport.debug(`  >> ${videoJSON.title} - Tags set to ${tags.join(', ')}`);
     }
+    if (!videoJSON.alteredContent) {
+        await page.click("tp-yt-paper-radio-button[name='VIDEO_HAS_ALTERED_CONTENT_NO']").catch(() => {})
+    } else if (videoJSON.alteredContent) {
+        await page.click("tp-yt-paper-radio-button[name='VIDEO_HAS_ALTERED_CONTENT_YES']").catch(() => {})
+    }
 
     // Set pusblish to subscription feed and notify subscribers to false
     if(videoJSON.publishToSubscriptionFeedAndNotifySubscribers === false) {
