@@ -387,11 +387,6 @@ async function uploadVideo(videoJSON: Video, messageTransport: MessageTransport)
         await page.waitForSelector("#has-autoplaces-mentioned-checkbox > div:nth-child(1) > div:nth-child(1)")
         await page.click("#has-autoplaces-mentioned-checkbox > div:nth-child(1) > div:nth-child(1)");
     }
-    // Set automatic concepts to false
-    if(videoJSON.automaticConcepts === false) {
-        await page.waitForXPath("//*[@id='checkbox-line-height-aligner-container']")
-        await page.click("xpath//*[@id='checkbox-line-height-aligner-container']");
-    }
     // Selecting video language
     if (videoLang) {
         const langHandler = await page.$x("//*[normalize-space(text())='Video language']")

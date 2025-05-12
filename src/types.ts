@@ -19,7 +19,6 @@ export interface Video {
     gameTitleSearch?: string
     publishToSubscriptionFeedAndNotifySubscribers?: boolean
     automaticPlaces?: boolean
-    automaticConcepts?: boolean
     gameSelector?: ( arg0: GameData ) => Promise<boolean> | null
 }
 
