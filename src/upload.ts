@@ -1206,12 +1206,14 @@ async function login(
     )
 
     if (isOnGoogleAppAuthPage) {
+        messageTransport.debug("2fa - found phone code login");
         const codeElement = await localPage.$('samp')
         const code = (await codeElement?.getProperty('textContent'))?.toString().replace('JSHandle:', '')
         code && messageTransport.userAction('Press ' + code + ' on your phone to login')
     }
     // password isnt required in the case that a code was sent via google auth
     else {
+        messageTransport.debug("Entering password...");
         const passwordInputSelector = 'input[type="password"]:not([aria-hidden="true"])'
         await localPage.waitForSelector(passwordInputSelector)
         await localPage.waitForTimeout(3000)
@@ -1219,6 +1221,7 @@ async function login(
 
         await localPage.keyboard.press('Enter')
     }
+    messageTransport.debug("Proceeding login...");
 
     try {
         await localPage.waitForNavigation()
@@ -1255,6 +1258,7 @@ async function login(
         )
 
         if (isOnRecaptchaPage) {
+            messageTransport.warn("Recapcha found");
             throw new Error('Recaptcha found')
         }
 
