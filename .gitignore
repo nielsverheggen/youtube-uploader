@@ -104,6 +104,7 @@ dist
 .tern-port
 .dccache
 *.mp4
+*.mov
 test.js
 thumbnail.png
 yt-auth/
