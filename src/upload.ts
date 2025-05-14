@@ -1218,8 +1218,10 @@ async function login(
         await localPage.waitForSelector(passwordInputSelector)
         await localPage.waitForTimeout(3000)
         await localPage.type(passwordInputSelector, credentials.pass, { delay: 50 })
+        messageTransport.debug("Entered password...");
 
-        await localPage.keyboard.press('Enter')
+        await localPage.keyboard.press('Enter');
+        messageTransport.debug("Now what?");
     }
     messageTransport.debug("Proceeding login...");
 
