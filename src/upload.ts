@@ -1214,6 +1214,7 @@ async function login(
     // password isnt required in the case that a code was sent via google auth
     else {
         messageTransport.debug("Entering password...");
+        await localPage.screenshot({ path: '/temp/before_password.png' });
         const passwordInputSelector = 'input[type="password"]:not([aria-hidden="true"])'
         await localPage.waitForSelector(passwordInputSelector)
         await localPage.waitForTimeout(3000)
