@@ -70,10 +70,11 @@ export const upload = async (
     }
 
     messageTransport.debug("Launching browser...");
-    await launchBrowser(puppeteerLaunch, useCookieStore)
+    await launchBrowser(puppeteerLaunch, useCookieStore);
     messageTransport.debug("Browser successfully launched");
 
     try {
+        messageTransport.debug("Loading account...");
         await loadAccount(credentials, messageTransport, useCookieStore)
         messageTransport.debug("Account loaded");
 
@@ -1012,9 +1013,11 @@ async function loadAccount(
 ) {
     try {
         if (!fs.existsSync(cookiesFilePath) || !useCookieStore)
+            messageTransport.debug("Logging in...");
             await login(page, credentials, messageTransport, useCookieStore)
     } catch (error: any) {
         if (error.message === 'Recapcha found') {
+            messageTransport.warn("Recapcha found");
             if (browser) {
                 await browser.close()
             }
@@ -1185,12 +1188,14 @@ async function login(
 
     await changeLoginPageLangIfNeeded(localPage)
 
+    messageTransport.debug("Entering email...");
     const emailInputSelector = 'input[type="email"]'
     await localPage.waitForSelector(emailInputSelector)
 
     await localPage.type(emailInputSelector, credentials.email, { delay: 50 })
     await localPage.keyboard.press('Enter')
 
+    messageTransport.debug("Checking for 2fa...");
     // check if 2fa code was sent to phone
     await localPage.waitForNavigation()
     await localPage.waitForTimeout(1000)
