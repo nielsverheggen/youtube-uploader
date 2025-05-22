@@ -13,10 +13,10 @@ import { PuppeteerNodeLaunchOptions, Browser, Page } from 'puppeteer'
 import fs from 'fs-extra'
 import path from 'path'
 
-const StealthPlugin = require('puppeteer-extra-plugin-stealth')()
-StealthPlugin.enabledEvasions.delete('iframe.contentWindow')
-StealthPlugin.enabledEvasions.delete('navigator.plugins')
-puppeteer.use(StealthPlugin)
+// const StealthPlugin = require('puppeteer-extra-plugin-stealth')()
+// StealthPlugin.enabledEvasions.delete('iframe.contentWindow')
+// StealthPlugin.enabledEvasions.delete('navigator.plugins')
+// puppeteer.use(StealthPlugin)
 
 const maxTitleLen = 100
 const maxDescLen = 5000
@@ -1214,7 +1214,6 @@ async function login(
     // password isnt required in the case that a code was sent via google auth
     else {
         messageTransport.debug("Entering password...");
-        await localPage.screenshot({ path: 'before_password.png' });
         const passwordInputSelector = 'input[type="password"]:not([aria-hidden="true"])'
         await localPage.waitForSelector(passwordInputSelector)
         await localPage.waitForTimeout(3000)
