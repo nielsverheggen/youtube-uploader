@@ -9,14 +9,14 @@ import {
     GameData
 } from './types'
 import puppeteer from 'puppeteer-extra'
-import { PuppeteerNodeLaunchOptions, Browser, Page } from 'puppeteer'
+import { LaunchOptions, Browser, Page } from 'puppeteer'
 import fs from 'fs-extra'
 import path from 'path'
 
 const StealthPlugin = require('puppeteer-extra-plugin-stealth')()
-StealthPlugin.enabledEvasions.delete('iframe.contentWindow')
-StealthPlugin.enabledEvasions.delete('navigator.plugins')
-puppeteer.use(StealthPlugin)
+// StealthPlugin.enabledEvasions.delete('iframe.contentWindow')
+// StealthPlugin.enabledEvasions.delete('navigator.plugins')
+// puppeteer.use(StealthPlugin)
 
 const maxTitleLen = 100
 const maxDescLen = 5000
@@ -52,7 +52,7 @@ let lastSelectedChannel = "";
 export const upload = async (
     credentials: Credentials,
     videos: Video[],
-    puppeteerLaunch?: PuppeteerNodeLaunchOptions,
+    puppeteerLaunch?: LaunchOptions,
     messageTransport: MessageTransport = defaultMessageTransport
 ) => {
     cookiesDirPath = path.join('.', 'yt-auth')
@@ -90,14 +90,14 @@ export const upload = async (
                 const { onSuccess } = video
                 if (typeof onSuccess === 'function') {
                     try {
-                        onSuccess(link, video)
+                        onSuccess(link ?? "no link found", video)
                     }
                     catch (err) {
                         messageTransport.warn(`Error calling onSuccess function. Will proceed with other videos. Error: ${err}`);
                     }                    
                 }
 
-                uploadedYTLink.push(link)
+                uploadedYTLink.push(link ?? "no link found")
             }
             catch (err) {
                 messageTransport.error(`Error uploading video ${video.title} [${video.path}]: ${err}`);
@@ -151,23 +151,22 @@ async function uploadVideo(videoJSON: Video, messageTransport: MessageTransport)
 
     messageTransport.debug(`  >> ${videoJSON.title} - Upload URL opened`);
 
+
     const closeBtnXPath = "//*[normalize-space(text())='Close']"
     const selectBtnXPath = "//*[normalize-space(text())='Select files']"
     const saveCloseBtnXPath = '//*[@aria-label="Save and close"]/tp-yt-iron-icon'
     const createBtnXPath = '//*[@id="create-icon"]/tp-yt-iron-icon'
     const addVideoBtnXPath = '//*[@id="text-item-0"]/ytcp-ve/div/div/yt-formatted-string'
-    if (await page.waitForXPath(createBtnXPath, { timeout: 5000 }).catch(() => null)) {
-        const createBtn = await page.$x(createBtnXPath)
-        await createBtn[0].click()
+    if (await page.waitForSelector(`::-p-xpath(${createBtnXPath})`, { timeout: 5000 }).catch(() => null)) {
+        await page.locator(`::-p-xpath(${createBtnXPath}`).click()
     }
-    if (await page.waitForXPath(addVideoBtnXPath, { timeout: 5000 }).catch(() => null)) {
-        const addVideoBtn = await page.$x(addVideoBtnXPath)
-        await addVideoBtn[0].click()
+    if (await page.waitForSelector(`::-p-xpath(${addVideoBtnXPath})`, { timeout: 5000 }).catch(() => null)) {
+        await page.locator(`::-p-xpath(${addVideoBtnXPath}`).click()
     }
     for (let i = 0; i < 2; i++) {
         try {
-            await page.waitForXPath(selectBtnXPath)
-            await page.waitForXPath(closeBtnXPath)
+            await page.waitForSelector(`::-p-xpath(${selectBtnXPath})`)
+            await page.waitForSelector(`::-p-xpath(${closeBtnXPath})`)
             break
         } catch (error) {
             const nextText = i === 0 ? ' trying again' : ' failed again'
@@ -180,15 +179,14 @@ async function uploadVideo(videoJSON: Video, messageTransport: MessageTransport)
         }
     }
     // Remove hidden closebtn text
-    const closeBtn = await page.$x(closeBtnXPath)
+    const closeBtn = await page.$(`::-p-xpath(${closeBtnXPath})`)
     await page.evaluate((el) => {
-        el.textContent = 'oldclosse'
-    }, closeBtn[0])
+        el!.textContent = 'oldclosse'
+    }, closeBtn)
 
-    const selectBtn = await page.$x(selectBtnXPath)
     const [fileChooser] = await Promise.all([
         page.waitForFileChooser(),
-        selectBtn[0].click() // button that triggers file selection
+        page.locator(`::-p-xpath(${selectBtnXPath}`).click() // button that triggers file selection
     ])
     await fileChooser.accept([pathToFile]);
     messageTransport.debug(`  >> ${videoJSON.title} - File chooser accepted`);
@@ -225,14 +223,14 @@ async function uploadVideo(videoJSON: Video, messageTransport: MessageTransport)
 
     // Wait for upload to complete, but not checks
     const uploadCompletePromise = page
-        .waitForXPath('//ytcp-video-upload-progress/span[contains(@class,"progress-label") and contains(text(),"Upload complete")]', {
+        .waitForSelector(`::-p-xpath(//ytcp-video-upload-progress/span[contains(@class,"progress-label") and contains(text(),"Upload complete")])`, {
             timeout: 0
         })
         .then(() => 'uploadComplete');
 
     // Check if daily upload limit is reached
     const dailyUploadPromise = page
-        .waitForXPath('//div[contains(text(),"Daily upload limit reached")]', { timeout: 0 })
+        .waitForSelector(`::-p-xpath(//div[contains(text(),"Daily upload limit reached")])`, { timeout: 0 })
         .then(() => 'dailyUploadReached')
     const uploadResult = await Promise.any([uploadCompletePromise, dailyUploadPromise])
     if (uploadResult === 'dailyUploadReached') {
@@ -243,7 +241,7 @@ async function uploadVideo(videoJSON: Video, messageTransport: MessageTransport)
     // Wait for upload to go away and processing to start, skip the wait if the user doesn't want it.
     if (!videoJSON.skipProcessingWait) {
         // waits for checks to be complete (upload should be complete already)
-        await page.waitForXPath('//*[contains(text(),"Video upload complete")]', { hidden: true, timeout: 0 });
+        await page.waitForSelector(`::-p-xpath(//*[contains(text(),"Video upload complete")]})`, { hidden: true, timeout: 0 });
         messageTransport.debug(`  >> ${videoJSON.title} - Video upload finished`);    
     } else {
         await sleep(5000)
@@ -263,83 +261,84 @@ async function uploadVideo(videoJSON: Video, messageTransport: MessageTransport)
     // Wait until title & description box pops up
     if (thumb) {
         let thumbnailChooserXpath = xpathTextSelector('upload thumbnail')
-        await page.waitForXPath(thumbnailChooserXpath)
-        const thumbBtn = await page.$x(thumbnailChooserXpath)
+        await page.waitForSelector(`::-p-xpath(${thumbnailChooserXpath})`)
+        const thumbBtn = await page.$(`::-p-xpath(${thumbnailChooserXpath}`)
         const [thumbChooser] = await Promise.all([
             page.waitForFileChooser(),
-            thumbBtn[0].click() // button that triggers file selection
+            thumbBtn?.click() // button that triggers file selection
         ])
         await thumbChooser.accept([thumb])
     }
     await page.waitForFunction('document.querySelectorAll(\'[id="textbox"]\').length > 1')
-    const textBoxes = await page.$x('//*[@id="textbox"]')
+    const textBoxes = await page.$$('::-p-xpath(//*[@id="textbox"])')
     await page.bringToFront()
     // Add the title value
     await textBoxes[0].focus()
-    await page.waitForTimeout(1000)
-    await textBoxes[0].evaluate((e) => ((e as any).__shady_native_textContent = ''))
+    await new Promise(r => setTimeout(r, 1000))
+    await textBoxes[0].evaluate((e: any) => ((e as any).__shady_native_textContent = ''))
     await textBoxes[0].type(title.substring(0, maxTitleLen))
     // Add the Description content
-    await textBoxes[0].evaluate((e) => ((e as any).__shady_native_textContent = ''))
+    await textBoxes[0].evaluate((e: any) => ((e as any).__shady_native_textContent = ''))
     await textBoxes[1].type(description.substring(0, maxDescLen));
 
     messageTransport.debug(`  >> ${videoJSON.title} - Title and description set`);
 
-    const childOption = await page.$x('//*[contains(text(),"No, it\'s")]')
-    await childOption[0].click()
+    const childOption = await page.$('::-p-xpath(//*[contains(text(),"No, it\'s")])')
+    await childOption?.click()
 
     // There is no reason for this to be called. Also you should be using #toggle-button not going by the text...
     // const moreOption = await page.$x("//*[normalize-space(text())='Show more']")
     // await moreOption[0]?.click()
 
-    const playlist = await page.$x("//*[normalize-space(text())='Select']")
-    let createplaylistdone
+    // const playlist = await page.$("::-p-xpath(//*[normalize-space(text())='Select'])")
+    // let createplaylistdone
     if (playlistName) {
-        let playlistSet = false;
-        // Selecting playlist
-        for (let i = 0; i < 2; i++) {
-            try {
-                await page.evaluate((el) => el.click(), playlist[0])
-                // Type the playlist name to filter out
-                await page.waitForSelector('#search-input')
-                await page.focus(`#search-input`)
-                await page.type(`#search-input`, playlistName)
+        // Temporarily removed playlist options
+        // let playlistSet = false;
+        // // Selecting playlist
+        // for (let i = 0; i < 2; i++) {
+        //     try {
+        //         await page.evaluate((el) => el.click(), playlist)
+        //         // Type the playlist name to filter out
+        //         await page.waitForSelector('#search-input')
+        //         await page.focus(`#search-input`)
+        //         await page.type(`#search-input`, playlistName)
 
-                const escapedPlaylistName = escapeQuotesForXPath(playlistName)
-                const playlistToSelectXPath = '//*[normalize-space(text())=' + escapedPlaylistName + ']'
-                await page.waitForXPath(playlistToSelectXPath, { timeout: 10000 })
-                const playlistNameSelector = await page.$x(playlistToSelectXPath)
-                await page.evaluate((el) => el.click(), playlistNameSelector[0])
-                createplaylistdone = await page.$x("//*[normalize-space(text())='Done']")
-                await page.evaluate((el) => el.click(), createplaylistdone[0]);
-                playlistSet = true;
-                break
-            } catch (error) {
-                messageTransport.log(`  >> ${videoJSON.title} - ${playlistName} not found. Creating...`);
-                // Creating new playlist
-                // click on playlist dropdown
-                await page.evaluate((el) => el.click(), playlist[0])
-                // click New playlist button
-                const newPlaylistXPath =
-                    "//*[normalize-space(text())='New playlist'] | //*[normalize-space(text())='Create playlist']"
-                await page.waitForXPath(newPlaylistXPath)
-                const createplaylist = await page.$x(newPlaylistXPath)
-                await page.evaluate((el) => el.click(), createplaylist[0])
-                // Enter new playlist name
-                await page.keyboard.type(' ' + playlistName.substring(0, 148))
-                // click create & then done button
-                const createplaylistbtn = await page.$x("//*[normalize-space(text())='Create']")
-                await page.evaluate((el) => el.click(), createplaylistbtn[1])
-                createplaylistdone = await page.$x("//*[normalize-space(text())='Done']")
-                await page.evaluate((el) => el.click(), createplaylistdone[0]);
-                playlistSet = true;
-            }
-        }
-        if (playlistSet) {
-            messageTransport.debug(`  >> ${videoJSON.title} - Playlist set to ${playlistName}`);
-        } else {
-            messageTransport.warn(`  >> ${videoJSON.title} - Failed setting playlist`);
-        }
+        //         const escapedPlaylistName = escapeQuotesForXPath(playlistName)
+        //         const playlistToSelectXPath = '//*[normalize-space(text())=' + escapedPlaylistName + ']'
+        //         await page.waitForSelector(`::-p-xpath(${playlistToSelectXPath})`, { timeout: 10000 })
+        //         const playlistNameSelector = await page.$(`::-p-xpath(${playlistToSelectXPath}`)
+        //         await page.evaluate((el) => el.click(), playlistNameSelector)
+        //         createplaylistdone = await page.$("::-p-xpath(//*[normalize-space(text())='Done'])")
+        //         await page.evaluate((el) => el.click(), createplaylistdone);
+        //         playlistSet = true;
+        //         break
+        //     } catch (error) {
+        //         messageTransport.log(`  >> ${videoJSON.title} - ${playlistName} not found. Creating...`);
+        //         // Creating new playlist
+        //         // click on playlist dropdown
+        //         await page.evaluate((el) => el.click(), playlist)
+        //         // click New playlist button
+        //         const newPlaylistXPath =
+        //             "//*[normalize-space(text())='New playlist'] | //*[normalize-space(text())='Create playlist']"
+        //         await page.waitForSelector(`::-p-xpath(${newPlaylistXPath})`)
+        //         const createplaylist = await page.$(`::-p-xpath(${newPlaylistXPath}`)
+        //         await page.evaluate((el) => el.click(), createplaylist)
+        //         // Enter new playlist name
+        //         await page.keyboard.type(' ' + playlistName.substring(0, 148))
+        //         // click create & then done button
+        //         const createplaylistbtn = await page.$$("::-p-xpath(//*[normalize-space(text())='Create'])")
+        //         await page.evaluate((el) => el.click(), createplaylistbtn[1])
+        //         createplaylistdone = await page.$("::-p-xpath(//*[normalize-space(text())='Done'])")
+        //         await page.evaluate((el) => el.click(), createplaylistdone);
+        //         playlistSet = true;
+        //     }
+        // }
+        // if (playlistSet) {
+        //     messageTransport.debug(`  >> ${videoJSON.title} - Playlist set to ${playlistName}`);
+        // } else {
+        //     messageTransport.warn(`  >> ${videoJSON.title} - Failed setting playlist`);
+        // }
         
     }
 
@@ -395,16 +394,17 @@ async function uploadVideo(videoJSON: Video, messageTransport: MessageTransport)
     }
     // Selecting video language
     if (videoLang) {
-        const langHandler = await page.$x("//*[normalize-space(text())='Video language']")
-        await page.evaluate((el) => el.click(), langHandler[0])
-        // translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')
-        const langName = await page.$x(
-            '//*[normalize-space(translate(text(),"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"))=\'' +
-                videoLang.toLowerCase() +
-                "']"
-        )
-        await page.evaluate((el) => el.click(), langName[langName.length - 1]);
-        messageTransport.debug(`  >> ${videoJSON.title} - Video language set to ${videoLang}`);
+        // TODO: Fix language handling
+        // const langHandler = await page.$x("//*[normalize-space(text())='Video language']")
+        // await page.evaluate((el) => el.click(), langHandler[0])
+        // // translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')
+        // const langName = await page.$x(
+        //     '//*[normalize-space(translate(text(),"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"))=\'' +
+        //         videoLang.toLowerCase() +
+        //         "']"
+        // )
+        // await page.evaluate((el) => el.click(), langName[langName.length - 1]);
+        // messageTransport.debug(`  >> ${videoJSON.title} - Video language set to ${videoLang}`);
     }
 
     // Setting Game Title ( Will also set Category to gaming )
@@ -421,15 +421,15 @@ async function uploadVideo(videoJSON: Video, messageTransport: MessageTransport)
     const nextBtnXPath = "//*[normalize-space(text())='Next']/parent::*[not(@disabled)]"
     let next
 
-    await page.waitForXPath(nextBtnXPath)
-    next = await page.$x(nextBtnXPath)
-    await next[0].click()
+    await page.waitForSelector(`::-p-xpath(${nextBtnXPath})`)
+    next = await page.$(`::-p-xpath(${nextBtnXPath}`)
+    await next?.click()
 
     if (videoJSON.isChannelMonetized) {
         try {
             await page.waitForSelector('#child-input ytcp-video-monetization', { visible: true, timeout: 10000 })
 
-            await page.waitForTimeout(1500)
+            await new Promise(r => setTimeout(r, 1500))
 
             await page.click('#child-input ytcp-video-monetization')
 
@@ -444,7 +444,7 @@ async function uploadVideo(videoJSON: Video, messageTransport: MessageTransport)
                 ).click()
             )
 
-            await page.waitForTimeout(1500)
+            await new Promise(r => setTimeout(r, 1500))
 
             await page.waitForSelector(
                 'ytcp-video-monetization-edit-dialog.cancel-button-hidden .ytcp-video-monetization-edit-dialog #save-button',
@@ -454,11 +454,11 @@ async function uploadVideo(videoJSON: Video, messageTransport: MessageTransport)
                 'ytcp-video-monetization-edit-dialog.cancel-button-hidden .ytcp-video-monetization-edit-dialog #save-button'
             )
 
-            await page.waitForTimeout(1500)
+            await new Promise(r => setTimeout(r, 1500))
 
-            await page.waitForXPath(nextBtnXPath)
-            next = await page.$x(nextBtnXPath)
-            await next[0].click()
+            await page.waitForSelector(`::-p-xpath(${nextBtnXPath})`)
+            next = await page.$(`::-p-xpath(${nextBtnXPath}`)
+            await next?.click()
         } catch {}
 
         try {
@@ -474,7 +474,7 @@ async function uploadVideo(videoJSON: Video, messageTransport: MessageTransport)
                 ).click()
             )
 
-            await page.waitForTimeout(1500)
+            await new Promise(r => setTimeout(r, 1500))
 
             await page.waitForSelector(
                 '.ytpp-self-certification-questionnaire .ytpp-self-certification-questionnaire #submit-questionnaire-button',
@@ -488,31 +488,31 @@ async function uploadVideo(videoJSON: Video, messageTransport: MessageTransport)
                 ).click()
             )
 
-            await page.waitForXPath(nextBtnXPath)
-            next = await page.$x(nextBtnXPath)
-            await next[0].click()
+            await page.waitForSelector(`::-p-xpath(${nextBtnXPath})`)
+            next = await page.$(`::-p-xpath(${nextBtnXPath}`)
+            await next?.click()
 
-            await page.waitForTimeout(1500)
+            await new Promise(r => setTimeout(r, 1500))
         } catch {}
         messageTransport.debug(`  >> ${videoJSON.title} - Channel monetization set`);
     }
 
     await sleep(100);
-    await page.waitForXPath(nextBtnXPath)
+    await page.waitForSelector(`::-p-xpath(${nextBtnXPath})`)
     // click next button
     await sleep(100);
-    next = await page.$x(nextBtnXPath)
-    await next[0].click()
-    await page.waitForXPath(nextBtnXPath)
+    next = await page.$(`::-p-xpath(${nextBtnXPath}`)
+    await next?.click()
+    await page.waitForSelector(`::-p-xpath(${nextBtnXPath})`)
     // click next button
     await sleep(100);
-    next = await page.$x(nextBtnXPath)
-    await next[0].click()
+    next = await page.$(`::-p-xpath(${nextBtnXPath}`)
+    await next?.click()
 
     if (videoJSON.publishType) {
         await page.waitForSelector('#privacy-radios *[name="' + videoJSON.publishType + '"]', { visible: true })
 
-        await page.waitForTimeout(1000)
+        await new Promise(r => setTimeout(r, 1000))
 
         await page.click('#privacy-radios *[name="' + videoJSON.publishType + '"]');
         messageTransport.debug(`  >> ${videoJSON.title} - Publish type set`);
@@ -521,7 +521,7 @@ async function uploadVideo(videoJSON: Video, messageTransport: MessageTransport)
     // Get publish button
     const publishXPath =
         "//*[normalize-space(text())='Publish']/parent::*[not(@disabled)] | //*[normalize-space(text())='Save']/parent::*[not(@disabled)]"
-    await page.waitForXPath(publishXPath)
+    await page.waitForSelector(`::-p-xpath(${publishXPath})`)
     // save youtube upload link
     const videoBaseLink = 'https://youtu.be'
     const shortVideoBaseLink = 'https://youtube.com/shorts'
@@ -531,19 +531,19 @@ async function uploadVideo(videoJSON: Video, messageTransport: MessageTransport)
 
     let uploadedLink
     do {
-        await page.waitForTimeout(500)
-        uploadedLink = await page.evaluate((e) => e.getAttribute('href'), uploadedLinkHandle)
+        await new Promise(r => setTimeout(r, 500))
+        uploadedLink = await page.evaluate((e: any) => e.getAttribute('href'), uploadedLinkHandle)
     } while (uploadedLink === videoBaseLink || uploadedLink === shortVideoBaseLink)
 
     const closeDialogXPath = uploadAsDraft ? saveCloseBtnXPath : publishXPath
     let closeDialog
     for (let i = 0; i < 10; i++) {
         try {
-            closeDialog = await page.$x(closeDialogXPath)
-            await closeDialog[0].click()
+            closeDialog = await page.$(`::-p-xpath(${closeDialogXPath}`)
+            await closeDialog?.click()
             break
         } catch (error) {
-            await page.waitForTimeout(5000)
+            await new Promise(r => setTimeout(r, 5000))
         }
     }
 
@@ -562,7 +562,7 @@ async function uploadVideo(videoJSON: Video, messageTransport: MessageTransport)
 
     // Wait for closebtn to show up
     try {
-        await page.waitForXPath(closeBtnXPath)
+        await page.waitForSelector(`::-p-xpath(${closeBtnXPath})`)
     } catch (e) {
         await browser.close()
         throw new Error(
@@ -576,7 +576,7 @@ async function uploadVideo(videoJSON: Video, messageTransport: MessageTransport)
 export const update = async (
     credentials: Credentials,
     videos: VideoToEdit[],
-    puppeteerLaunch?: PuppeteerNodeLaunchOptions,
+    puppeteerLaunch?: LaunchOptions,
     messageTransport: MessageTransport = defaultMessageTransport
 ) => {
     cookiesDirPath = path.join('.', 'yt-auth')
@@ -609,7 +609,7 @@ export const update = async (
 export const comment = async (
     credentials: Credentials,
     comments: Comment[],
-    puppeteerLaunch?: PuppeteerNodeLaunchOptions,
+    puppeteerLaunch?: LaunchOptions,
     messageTransport: MessageTransport = defaultMessageTransport
 ) => {
     cookiesDirPath = path.join('.', 'yt-auth')
@@ -655,14 +655,14 @@ const publishShortComment = async (comment: Comment) => {
     await page.goto(videoUrl)
     await sleep(3000)
     try {
-        await page.waitForXPath(cmtBtnXPath)
-        const cmtBtn = await page.$x(cmtBtnXPath)
-        await cmtBtn[0].click()
-        await page.waitForXPath(cmtInputXPath)
-        const inputArea = await page.$x(cmtInputXPath)
-        await inputArea[0].focus()
-        await inputArea[0].click()
-        await inputArea[0].type(cmt.substring(0, 10000))
+        await page.waitForSelector(`::-p-xpath(${cmtBtnXPath})`)
+        const cmtBtn = await page.$(`::-p-xpath(${cmtBtnXPath}`)
+        await cmtBtn?.click()
+        await page.waitForSelector(`::-p-xpath(${cmtInputXPath})`)
+        const inputArea = await page.$(`::-p-xpath(${cmtInputXPath}`)
+        await inputArea?.focus()
+        await inputArea?.click()
+        await inputArea?.type(cmt.substring(0, 10000))
         await page.click('#submit-button')
         return { err: false, data: 'sucess' }
     } catch (err) {
@@ -683,21 +683,21 @@ const publishComment = (comment: Comment) => {
             await scrollTillVeiw(page, `#placeholder-area`)
 
             await page.focus(`#placeholder-area`)
-            const commentBox = await page.$x('//*[@id="placeholder-area"]')
-            await commentBox[0].focus()
-            await commentBox[0].click()
-            await commentBox[0].type(cmt.substring(0, 10000))
+            const commentBox = await page.$('::-p-xpath(//*[@id="placeholder-area"])')
+            await commentBox?.focus()
+            await commentBox?.click()
+            await commentBox?.type(cmt.substring(0, 10000))
 
             page.exposeFunction('commentResolve', resolve)
 
             if (comment.pin) {
                 // Select the comment list
-                const [commentList] = await page.$x(
-                    `//ytd-comments[@id="comments"]//ytd-item-section-renderer[@section-identifier="comment-item-section"]/div[@id="contents"]`
+                const [commentList] = await page.$$(
+                    `::-p-xpath(//ytd-comments[@id="comments"]//ytd-item-section-renderer[@section-identifier="comment-item-section"]/div[@id="contents"])`
                 )
 
                 // Register mutation observer for comment list
-                await commentList.evaluateHandle((commentList) => {
+                await commentList.evaluateHandle((commentList: any) => {
                     const observer = new MutationObserver((mutations) => {
                         mutations.forEach(async (mutation) => {
                             if (mutation.addedNodes.length > 0) {
@@ -823,21 +823,21 @@ const updateVideoInfo = async (videoJSON: VideoToEdit, messageTransport: Message
     await page.goto(videoUrl)
     const editXpath = '//*[@id="subscribe-button"]/ytd-button-renderer'
     try {
-        await page.waitForXPath(editXpath, { timeout: 7000 })
+        await page.waitForSelector(`::-p-xpath(${editXpath})`, { timeout: 7000 })
     } catch (err) {
         throw new Error('The video provided may not be yours')
     }
 
-    let edit = await page.$x(editXpath)
-    await edit[0].click()
+    let edit = await page.$(`::-p-xpath(${editXpath}`)
+    await edit?.click()
     const titleE = '//*[@id="textbox"]'
-    await page.waitForXPath(titleE, { timeout: 70000 })
+    await page.waitForSelector(`::-p-xpath(${titleE})`, { timeout: 70000 })
     await page.waitForFunction('document.querySelectorAll(\'[id="textbox"]\').length > 1')
-    const textBoxes = await page.$x('//*[@id="textbox"]')
+    const textBoxes = await page.$$('::-p-xpath(//*[@id="textbox"])')
     await page.bringToFront()
     // Edit the title value (if)
     await textBoxes[0].focus()
-    await page.waitForTimeout(1000)
+    await new Promise(r => setTimeout(r, 1000))
     if (!videoJSON.isNotForKid) {
         await page.click("tp-yt-paper-radio-button[name='VIDEO_MADE_FOR_KIDS_MFK']").catch(() => {})
     } else if (videoJSON.isAgeRestriction) {
@@ -850,7 +850,7 @@ const updateVideoInfo = async (videoJSON: VideoToEdit, messageTransport: Message
         // await page.keyboard.press('A')
         // await page.keyboard.up('Control')
         // await page.keyboard.press('Backspace')
-        await textBoxes[0].evaluate((e) => ((e as any).__shady_native_textContent = ''))
+        await textBoxes[0].evaluate((e: any) => ((e as any).__shady_native_textContent = ''))
         await textBoxes[0].type(title.substring(0, maxTitleLen))
     }
     // Edit the Description content (if)
@@ -860,7 +860,7 @@ const updateVideoInfo = async (videoJSON: VideoToEdit, messageTransport: Message
         // await page.keyboard.press('A')
         // await page.keyboard.up('Control')
         // await page.keyboard.press('Backspace')
-        await textBoxes[1].evaluate((e) => ((e as any).__shady_native_textContent = ''))
+        await textBoxes[1].evaluate((e: any) => ((e as any).__shady_native_textContent = ''))
         await textBoxes[1].type(description.substring(0, maxDescLen))
     }
     if (thumb) {
@@ -870,7 +870,7 @@ const updateVideoInfo = async (videoJSON: VideoToEdit, messageTransport: Message
                 await page.click('#still-1 > button')
                 await page.waitForSelector('#save > div')
                 await page.click(`#save > div`)
-                await page.waitForXPath("//*[normalize-space(text())='Save']/parent::*[@disabled]")
+                await page.waitForSelector("::-p-xpath(//*[normalize-space(text())='Save']/parent::*[@disabled])")
                 await sleep(500)
                 return await page.waitForFileChooser()
             }),
@@ -882,44 +882,45 @@ const updateVideoInfo = async (videoJSON: VideoToEdit, messageTransport: Message
         await thumbChooser.accept([thumb])
     }
     // await sleep( 10000000)
-    const playlist = await page.$x(
-        `//*[@id="basics"]/div[4]/div[3]/div[1]/ytcp-video-metadata-playlists/ytcp-text-dropdown-trigger/ytcp-dropdown-trigger/div/div[3]`
-    )
-    let createplaylistdone
+    // const playlist = await page.$$(
+    //     `::-p-xpath(//*[@id="basics"]/div[4]/div[3]/div[1]/ytcp-video-metadata-playlists/ytcp-text-dropdown-trigger/ytcp-dropdown-trigger/div/div[3])`
+    // )
+    // let createplaylistdone
     if (playlistName) {
-        for (let i = 0; i < 2; i++) {
-            try {
-                await page.evaluate((el) => el.click(), playlist[0])
-                await page.waitForSelector('#search-input')
-                await page.focus(`#search-input`)
-                await page.type(`#search-input`, playlistName)
+        // Temporarily removed playlists
+        // for (let i = 0; i < 2; i++) {
+        //     try {
+        //         await page.evaluate((el) => el.click(), playlist[0])
+        //         await page.waitForSelector('#search-input')
+        //         await page.focus(`#search-input`)
+        //         await page.type(`#search-input`, playlistName)
 
-                const escapedPlaylistName = escapeQuotesForXPath(playlistName)
-                const playlistToSelectXPath = '//*[normalize-space(text())=' + escapedPlaylistName + ']'
+        //         const escapedPlaylistName = escapeQuotesForXPath(playlistName)
+        //         const playlistToSelectXPath = '//*[normalize-space(text())=' + escapedPlaylistName + ']'
 
-                await page.waitForXPath(playlistToSelectXPath, { timeout: 10000 })
-                const playlistNameSelector = await page.$x(playlistToSelectXPath)
-                await page.evaluate((el) => el.click(), playlistNameSelector[0])
-                createplaylistdone = await page.$x("//*[normalize-space(text())='Done']")
-                await page.evaluate((el) => el.click(), createplaylistdone[0])
-                break
-            } catch (error) {
-                await page.evaluate((el) => el.click(), playlist[0])
-                const newPlaylistXPath =
-                    "//*[normalize-space(text())='New playlist'] | //*[normalize-space(text())='Create playlist']"
-                await page.waitForXPath(newPlaylistXPath)
-                const createplaylist = await page.$x(newPlaylistXPath)
-                await page.evaluate((el) => el.click(), createplaylist[0])
-                await page.keyboard.type(' ' + playlistName.substring(0, 148))
-                const createplaylistbtn = await page.$x("//*[normalize-space(text())='Create']")
-                await page.evaluate((el) => el.click(), createplaylistbtn[1])
-                createplaylistdone = await page.$x("//*[normalize-space(text())='Done']")
-                await page.evaluate((el) => el.click(), createplaylistdone[0])
-            }
-        }
+        //         await page.waitForSelector(`::-p-xpath(${playlistToSelectXPath})`, { timeout: 10000 })
+        //         const playlistNameSelector = await page.$x(playlistToSelectXPath)
+        //         await page.evaluate((el) => el.click(), playlistNameSelector[0])
+        //         createplaylistdone = await page.$x("//*[normalize-space(text())='Done']")
+        //         await page.evaluate((el) => el.click(), createplaylistdone[0])
+        //         break
+        //     } catch (error) {
+        //         await page.evaluate((el) => el.click(), playlist[0])
+        //         const newPlaylistXPath =
+        //             "//*[normalize-space(text())='New playlist'] | //*[normalize-space(text())='Create playlist']"
+        //         await page.waitForSelector(`::-p-xpath(${newPlaylistXPath})`)
+        //         const createplaylist = await page.$x(newPlaylistXPath)
+        //         await page.evaluate((el) => el.click(), createplaylist[0])
+        //         await page.keyboard.type(' ' + playlistName.substring(0, 148))
+        //         const createplaylistbtn = await page.$x("//*[normalize-space(text())='Create']")
+        //         await page.evaluate((el) => el.click(), createplaylistbtn[1])
+        //         createplaylistdone = await page.$x("//*[normalize-space(text())='Done']")
+        //         await page.evaluate((el) => el.click(), createplaylistdone[0])
+        //     }
+        // }
     }
-    const moreOption = await page.$x("//*[normalize-space(text())='Show more']")
-    await moreOption[0].click()
+    const moreOption = await page.$("::-p-xpath(//*[normalize-space(text())='Show more'])")
+    await moreOption?.click()
     if (tags) {
         await page.focus(`[aria-label="Tags"]`)
         await page.type(`[aria-label="Tags"]`, tags.join(', ').substring(0, 495) + ', ')
@@ -930,14 +931,15 @@ const updateVideoInfo = async (videoJSON: VideoToEdit, messageTransport: Message
         await page.type(`[aria-label="Tags"]`, Rtags.join(', ').substring(0, 495) + ', ')
     }
     if (videoLang) {
-        const langHandler = await page.$x("//*[normalize-space(text())='Video language']")
-        await page.evaluate((el) => el.click(), langHandler[0])
-        const langName = await page.$x(
-            '//*[normalize-space(translate(text(),"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"))=\'' +
-                videoLang.toLowerCase() +
-                "']"
-        )
-        await page.evaluate((el) => el.click(), langName[langName.length - 1])
+        // TODO: Fix lanuage handling
+        // const langHandler = await page.$("::-p-xpath(//*[normalize-space(text())='Video language'])")
+        // await page.evaluate((el) => el.click(), langHandler)
+        // const langName = await page.$(
+        //     '::-p-xpath(//*[normalize-space(translate(text(),"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"))=\'' +
+        //         videoLang.toLowerCase() +
+        //         "'])"
+        // )
+        // await page.evaluate((el) => el.click(), langName[langName.length - 1])
     }
     // Setting Game Title ( Will also set Category to gaming )
     if (gameTitleSearch) {
@@ -948,7 +950,7 @@ const updateVideoInfo = async (videoJSON: VideoToEdit, messageTransport: Message
     if (publish) {
         await page.click(`#content`)
         // await page.click(`#onRadio`);
-        const publishBtn = await page.$x('//*[@id="first-container"]')
+        const publishBtn = await page.$('::-p-xpath(//*[@id="first-container"])')
         await sleep(2000)
         // publishBtn[0].click()
         try {
@@ -997,7 +999,7 @@ const updateVideoInfo = async (videoJSON: VideoToEdit, messageTransport: Message
 
         await page.waitForSelector('#save > div')
         await page.click(`#save > div`)
-        await page.waitForXPath("//*[normalize-space(text())='Save']/parent::*[@disabled]")
+        await page.waitForSelector("S:-p-xpath(//*[normalize-space(text())='Save']/parent::*[@disabled])")
     } catch (err) {
         messageTransport.log(err)
         throw new Error('Probably nothing was changed ...')
@@ -1012,9 +1014,10 @@ async function loadAccount(
     useCookieStore: boolean = true
 ) {
     try {
-        if (!fs.existsSync(cookiesFilePath) || !useCookieStore)
+        if (!fs.existsSync(cookiesFilePath) || !useCookieStore) {
             messageTransport.debug("Logging in...");
-            await login(page, credentials, messageTransport, useCookieStore)
+            await login(page, credentials, messageTransport, useCookieStore);
+        }
     } catch (error: any) {
         if (error.message === 'Recapcha found') {
             messageTransport.warn("Recapcha found");
@@ -1065,7 +1068,7 @@ async function changeLoginPageLangIfNeeded(localPage: Page) {
 
     await localPage.click(selectedLangSelector)
 
-    await localPage.waitForTimeout(1000)
+    await new Promise(r => setTimeout(r, 1000))
 
     const englishLangItemSelector = '[role="presentation"]:not([aria-hidden="true"])>[data-value="en-GB"]'
 
@@ -1077,7 +1080,7 @@ async function changeLoginPageLangIfNeeded(localPage: Page) {
 
     await localPage.click(englishLangItemSelector)
 
-    await localPage.waitForTimeout(1000)
+    await new Promise(r => setTimeout(r, 1000))
 }
 
 async function changeHomePageLangIfNeeded(localPage: Page) {
@@ -1102,7 +1105,7 @@ async function changeHomePageLangIfNeeded(localPage: Page) {
     }
 
     const selectedLang = await localPage.evaluate(
-        (langMenuItemSelector) => document.querySelector(langMenuItemSelector).innerText,
+        (langMenuItemSelector: any) => document.querySelector(langMenuItemSelector).innerText,
         langMenuItemSelector
     )
 
@@ -1121,12 +1124,12 @@ async function changeHomePageLangIfNeeded(localPage: Page) {
     const englishItemXPath = "//*[normalize-space(text())='English (UK)']"
 
     try {
-        await localPage.waitForXPath(englishItemXPath)
+        await localPage.waitForSelector(`::-p-xpath(${englishItemXPath})`)
     } catch (e: any) {
         throw new Error('English(UK) item selector not found : ' + e.name)
     }
 
-    await localPage.waitForTimeout(3000)
+    await new Promise(r => setTimeout(r, 3000))
 
     await localPage.evaluate((englishItemXPath: any) => {
         let element: HTMLElement = document?.evaluate(
@@ -1142,10 +1145,11 @@ async function changeHomePageLangIfNeeded(localPage: Page) {
     await changeHomePageLangIfNeeded(localPage)
 }
 
-async function launchBrowser(puppeteerLaunch?: PuppeteerNodeLaunchOptions, loadCookies: boolean = true) {
+async function launchBrowser(puppeteerLaunch?: LaunchOptions, loadCookies: boolean = true) {
     browser = await puppeteer.launch(puppeteerLaunch)
     page = await browser.newPage()
     await page.setDefaultTimeout(timeout)
+    await page.setUserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36")
 
     if (loadCookies) {
         const previousSession = fs.existsSync(cookiesFilePath)
@@ -1198,7 +1202,7 @@ async function login(
     messageTransport.debug("Checking for 2fa...");
     // check if 2fa code was sent to phone
     await localPage.waitForNavigation()
-    await localPage.waitForTimeout(1000)
+    await new Promise(r => setTimeout(r, 1000))
     const googleAppAuthSelector = 'samp'
     const isOnGoogleAppAuthPage = await localPage.evaluate(
         (authCodeSelector) => document.querySelector(authCodeSelector) !== null,
@@ -1214,21 +1218,19 @@ async function login(
     // password isnt required in the case that a code was sent via google auth
     else {
         messageTransport.debug("Entering password...");
-        await localPage.screenshot({ path: 'before_password.png' });
         const passwordInputSelector = 'input[type="password"]:not([aria-hidden="true"])'
         await localPage.waitForSelector(passwordInputSelector)
-        await localPage.waitForTimeout(3000)
+        await new Promise(r => setTimeout(r, 3000))
         await localPage.type(passwordInputSelector, credentials.pass, { delay: 50 })
         messageTransport.debug("Entered password...");
 
         await localPage.keyboard.press('Enter');
-        messageTransport.debug("Now what?");
     }
     messageTransport.debug("Proceeding login...");
 
     try {
         await localPage.waitForNavigation()
-        await localPage.waitForTimeout(1000)
+        await new Promise(r => setTimeout(r, 1000))
 
         // check if sms code was sent
         const smsAuthSelector = '#idvPin'
@@ -1270,7 +1272,7 @@ async function login(
     //create channel if not already created.
     try {
         await localPage.click('#create-channel-button')
-        await localPage.waitForTimeout(3000)
+        await new Promise(r => setTimeout(r, 3000))
     } catch (error) {
         messageTransport.log('Channel already exists or there was an error creating the channel.')
     }
@@ -1300,10 +1302,10 @@ async function login(
 async function securityBypass(localPage: Page, recoveryemail: string, messageTransport: MessageTransport) {
     try {
         const confirmRecoveryXPath = "//*[normalize-space(text())='Confirm your recovery email']"
-        await localPage.waitForXPath(confirmRecoveryXPath)
+        await localPage.waitForSelector(`::-p-xpath(${confirmRecoveryXPath})`)
 
-        const confirmRecoveryBtn = await localPage.$x(confirmRecoveryXPath)
-        await localPage.evaluate((el: any) => el.click(), confirmRecoveryBtn[0])
+        const confirmRecoveryBtn = await localPage.$(`::-p-xpath(${confirmRecoveryXPath}`)
+        await localPage.evaluate((el: any) => el.click(), confirmRecoveryBtn)
     } catch (error) {
         messageTransport.log(error)
     }
@@ -1312,10 +1314,10 @@ async function securityBypass(localPage: Page, recoveryemail: string, messageTra
         waitUntil: 'networkidle0'
     })
     const enterRecoveryXPath = "//*[normalize-space(text())='Enter recovery email address']"
-    await localPage.waitForXPath(enterRecoveryXPath)
-    await localPage.waitForTimeout(5000)
+    await localPage.waitForSelector(`::-p-xpath(${enterRecoveryXPath})`)
+    await new Promise(r => setTimeout(r, 5000))
     await localPage.focus('input[type="email"]')
-    await localPage.waitForTimeout(3000)
+    await new Promise(r => setTimeout(r, 3000))
     await localPage.type('input[type="email"]', recoveryemail, { delay: 100 })
     await localPage.keyboard.press('Enter')
     await localPage.waitForNavigation({
@@ -1366,7 +1368,7 @@ async function changeChannel(channelName: string) {
     await page.goto('https://www.youtube.com/channel_switcher')
 
     const channelNameXPath = `//*[normalize-space(text())='${channelName}']`
-    const element = await page.waitForXPath(channelNameXPath)
+    const element = await page.waitForSelector(`::-p-xpath(${channelNameXPath})`)
 
     await element!.click()
 

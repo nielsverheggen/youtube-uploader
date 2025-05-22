@@ -13,10 +13,10 @@
     "test": "test"
   },
   "dependencies": {
-    "prettier": "^2.4.1",
-    "puppeteer": "^14.4.1",
-    "puppeteer-extra": "^3.3.0",
-    "puppeteer-extra-plugin-stealth": "^2.10.1"
+    "prettier": "^3.5.3",
+    "puppeteer": "^24.8.2",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   },
   "repository": {
     "type": "git",
