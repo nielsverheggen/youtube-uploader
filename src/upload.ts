@@ -1013,7 +1013,7 @@ async function loadAccount(
 ) {
     try {
         if (!fs.existsSync(cookiesFilePath) || !useCookieStore)
-            messageTransport.debug("Logging in...");
+            messageTransport.debug("Logging in...")
             await login(page, credentials, messageTransport, useCookieStore)
     } catch (error: any) {
         if (error.message === 'Recapcha found') {
@@ -1070,7 +1070,7 @@ async function changeLoginPageLangIfNeeded(localPage: Page) {
     const englishLangItemSelector = '[role="presentation"]:not([aria-hidden="true"])>[data-value="en-GB"]'
 
     try {
-        await localPage.waitForSelector(englishLangItemSelector)
+        await localPage.waitForSelector(englishLangItemSelector, { timeout: 15000 })
     } catch (e: any) {
         throw new Error('Failed to find english language item : ' + e.name)
     }
