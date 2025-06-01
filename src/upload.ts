@@ -1013,7 +1013,6 @@ async function loadAccount(
 ) {
     try {
         if (!fs.existsSync(cookiesFilePath) || !useCookieStore)
-            messageTransport.debug("Logging in...")
             await login(page, credentials, messageTransport, useCookieStore)
     } catch (error: any) {
         if (error.message === 'Recapcha found') {
